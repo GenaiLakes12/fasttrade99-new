@@ -1,0 +1,45 @@
+frontend:
+    build:
+      context: ./frontend  # Path to your Next.js frontend folder
+    ports:
+      - "3000:3000"  # Expose Next.js on port 3000
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000  # Backend API URL for frontend communication
+    depends_on:
+      - backend  # Make sure backend is ready before frontend starts
+    networks:
+      - app-network
+
+  # Backend (FastAPI)
+  backend:
+    build:
+      context: ./backend  # Path to your FastAPI backend folder
+    ports:
+      - "8000:8000"  # Expose FastAPI on port 8000
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@db:5432/mydb  # Database connection string for FastAPI
+    depends_on:
+      - db  # Ensure PostgreSQL container is up before starting backend
+    networks:
+      - app-network
+
+  # Database (PostgreSQL)
+  db:
+    image: postgres:latest  # Use the latest PostgreSQL image
+    container_name: postgres_db
+    environment:
+      POSTGRES_DB: mydb  # Database name
+      POSTGRES_USER: postgres  # Username
+      POSTGRES_PASSWORD: password  # Password
+    volumes:
+      - pgdata:/var/lib/postgresql/data  # Persist data in Docker volume
+    ports:
+      - "5430:5432"  # Expose PostgreSQL on port 5432
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:

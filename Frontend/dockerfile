@@ -1,0 +1,27 @@
+# Set the working directory
+WORKDIR /app
+
+# Copy package.json and package-lock.json first to leverage Docker caching
+COPY package.json package-lock.json ./
+
+# Change ownership of the working directory to the 'node' user
+RUN chown -R node:node /app
+
+# Install dependencies as the 'node' user
+USER node
+RUN npm install --legacy-peer-deps
+
+# Ensure all scripts in node_modules/.bin are executable
+RUN chmod -R 755 node_modules/.bin
+
+# Copy the rest of the application code, ensuring proper ownership
+COPY --chown=node:node . .
+
+# Build the application
+RUN npm run build
+
+# Expose the port for the Next.js application
+EXPOSE 3000
+
+# Start the application
+CMD ["npm", "start"]
