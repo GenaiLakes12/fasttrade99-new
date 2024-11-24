@@ -21,3 +21,6 @@ class USERSETTING_ROUTES:
         elif blueprint == "verify_otp":
             path = '/verify_otp/{username:str}'
             return path
+        elif blueprint == "get_startegy_account":
+            path = '/get_startegy_account/{username:str}'
+            return path

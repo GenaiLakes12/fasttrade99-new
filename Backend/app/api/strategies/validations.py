@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 # from app.api.brokers import config
 
 router = APIRouter()
-# app = FastAPI()
+app = FastAPI()
 
 
 # Multileg class for all Multi leg related operations
@@ -635,4 +635,3 @@ async def update_strategy_profit_trail_values(username: str,request:Request, str
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
     except KeyError as e:
         raise HTTPException(status_code=400, detail=f"Missing key in request: {str(e)}")
-    
