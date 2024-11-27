@@ -1,0 +1,44 @@
+// userprofile/page.tsx
+'use client';
+
+import React from 'react';
+import ErrorTable from './error'; // Adjust the import as necessary
+import StrategiesTable from './StrategiesTable'; // Import the updated Table component
+import StrategiesHeader from './StrategiesHeader'; // Import the UserProfileHeader component
+import GraphOne from './GraphOne'; // Import GraphOne
+import GraphTwo from './GraphTwo'; // Import GraphTwo
+import GraphThree from './GraphThree'; // Import GraphThree
+import MyComponent from './MyComponent'; // Import MyComponent
+
+
+const Page = () => {
+    return (
+        <div>
+            {/* Render the UserProfileHeader component */}
+            <StrategiesHeader />
+            
+            {/* Render the Table component */}
+            <StrategiesTable />
+
+            {/* Render MyComponent below Table */}
+            <MyComponent />
+
+             {/* Add grid layout for graphs */}
+             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0px', marginTop: '20px' }}>
+                <GraphOne />
+                <GraphTwo />
+                <GraphThree />
+            </div>
+            {/* Dashed separator line */}
+            <div style={{ borderTop: '2px solid #B2BEB5', margin: '20px 0' }}></div>
+
+            
+            {/* Render the ErrorTable component */}
+            <ErrorTable />
+
+           
+        </div>
+    );
+};
+
+export default Page;

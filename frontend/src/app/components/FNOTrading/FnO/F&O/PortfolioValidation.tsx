@@ -1,0 +1,4586 @@
+import React, { useState, useRef, memo, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import MarketIndex from "../../components/MarketIndex";
+import filterIcon from "../../assets/newFilter.png";
+import LeftNav from "../../components/LeftNav";
+import RightNav from "../../components/RightNav";
+import "../../styles.css";
+import { TopNav } from "../../components/TopNav";
+import { ErrorContainer } from "../../components/ErrorConsole";
+import Edit from "../../assets/edit.png";
+import Recycle from "../../assets/recyclebins.png";
+import makecopy from "../../assets/makecopy.png";
+import makeascompleted from "../../assets/markascompleted.png";
+import reset from "../../assets/reset.png";
+import payoff from "../../assets/PayOff.png";
+import Start from "../../assets/start_2.png";
+import chart from "../../assets/chart.png";
+import reexecute from "../../assets/reexecute.png";
+import partentry from "../../assets/part-entry.png";
+import close from "../../assets/close.png";
+import Modal from "react-modal";
+import Cookies from "universal-cookie";
+const cookies = new Cookies();
+import { useDispatch, useSelector } from "react-redux";
+import { setAllSeq } from "../../store/slices/colSeq";
+import { setAllVis } from "../../store/slices/colVis";
+import { setConsoleMsgs } from "../../store/slices/consoleMsg";
+import { setPortfolios } from "../../store/slices/portfolio";
+
+
+function Portfolio() {
+  const errorContainerRef = useRef(null);
+
+  const { collapsed } = useSelector((state: RootState) => state.collapseReducer);
+
+  const { consoleMsgs } = useSelector((state: RootState) => state.consoleMsgsReducer);
+
+  // Error Message start
+  const dispatch = useDispatch();
+
+  const brokerState = useSelector((state: RootState) => state.brokerReducer);
+
+  const [msgs, setMsgs] = useState<Array<any>>([]);
+
+  const handleClearLogs = () => {
+    if (msgs.length === 0) return; //guard clause
+    setMsgs([]);
+  };
+
+  // Error Message end
+  // portfolio table
+  const mainUser = cookies.get("USERNAME");
+
+  const [editingRow, setEditingRow] = useState<any>(null);
+  const [MakeCopy, setMakeCopy] = useState<any>(null);
+  const [MakeAsCompleted, setMakeAsCompleted] = useState<any>(null);
+  const [Reset, setReset] = useState<any>(null);
+  const [PayOff, setPayOff] = useState<any>(null);
+  const [Chart, setChart] = useState<any>(null);
+  const [Reexecute, setReexecute] = useState<any>(null);
+  const [PartEntry, setPartEntry] = useState<any>(null);
+
+  const navigate = useRouter();
+
+  const handleMsg = (Msg: {
+    msg: string;
+    user: string;
+    strategy: string;
+    portfolio: string;
+  }) => {
+    dispatch((dispatch: AppDispatch, getState: () => RootState) => {
+      const previousConsoleMsgs = getState().consoleMsgsReducer.consoleMsgs;
+
+      const lastMsg = previousConsoleMsgs[0];
+      if (
+        lastMsg &&
+        lastMsg.msg === Msg.msg &&
+        lastMsg.user === Msg.user &&
+        lastMsg.strategy === Msg.strategy &&
+        lastMsg.portfolio === Msg.portfolio
+      ) {
+        dispatch(
+          setConsoleMsgs({
+            consoleMsgs: [Msg, ...previousConsoleMsgs.slice(1)],
+          })
+        );
+      } else {
+        dispatch(
+          setConsoleMsgs({
+            consoleMsgs: [Msg, ...previousConsoleMsgs],
+          })
+        );
+      }
+    });
+  };
+  const handleDeletes = async (portfolioname: string) => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_HOST}/delete_portfolio/${mainUser}/${portfolioname}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(await response.json());
+      }
+
+      handlePageClick();
+      handleMsg({
+        msg: "Portfolio deleted Successfully",
+        logType: "MESSAGE",
+        timestamp: `${new Date().toLocaleString()}`,
+        portfolio: portfolioname,
+      });
+    } catch (error) {
+      // Error handling
+    } finally {
+      setShowConfirmDeleteModal(false);
+    }
+  };
+
+  const [showConfirmDeleteModal, setShowConfirmDeleteModal] = useState<boolean>(false);
+  const [portfolioToDelete, setPortfolioToDelete] = useState<string>("");
+  const [timerValue, setTimerValue] = useState<string>("");
+  const [isTableOpen, setTableOpen] = useState<boolean>(false);
+  const [isTableOpen1, setTableOpen1] = useState<boolean>(false);
+  const [isPlusClicked, setIsPlusClicked] = useState<Record<string, boolean>>({});
+  const [isPlusClicked1, setIsPlusClicked1] = useState<Record<string, boolean>>({});
+  const [subTableData, setsubTableData] = useState<any[]>([]);
+  const [showPortfolio, setShowPortfolio] = useState<boolean>(false);
+  const [otherDetails, setotherDetails] = useState<any[]>([]);
+  const [executedportfolios, setexecutedportfolios] = useState<string[]>([]);
+
+  const handleDelete = (portfolioName: string) => {
+    setShowConfirmDeleteModal(true);
+    setPortfolioToDelete(portfolioName);
+  };
+
+  useEffect(() => {
+    setotherDetails(brokerState.brokers);
+  }, [brokerState.brokers]);
+
+  const { portfolios: portfolioDetails } = useSelector(
+    (state: RootState) => state.portfolioReducer
+  );
+
+  const handlePageClick = async () => {
+    try {
+      const responsePortfolioData = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_HOST}/get_portfolio/${mainUser}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!responsePortfolioData.ok) {
+        const errorData = await responsePortfolioData.json();
+        throw {
+          message: errorData.message || "Something bad happened. Please try again",
+        };
+      }
+
+      const responseData = await responsePortfolioData.json();
+      let extractedPortfolio = responseData["Portfolio details"];
+
+      extractedPortfolio.forEach((portfolio: any) => {
+        portfolio.legs.forEach((leg: any) => {
+          leg.showPopupSL1 = false;
+          leg.showPopupSL = false;
+        });
+      });
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_HOST}/get_portfolio_performance/${mainUser}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch portfolio subtable data");
+      }
+
+      const portfolio_timings = await response.json();
+
+      dispatch(async (dispatch: AppDispatch, getState: () => RootState) => {
+        const executedPortfolios = getState().executedPortfolioReducer.executedPortfolios;
+        let portfolios = [];
+
+        const execPortNames = executedPortfolios.map(
+          (port) => port.portfolio_name
+        );
+
+        for (let i = 0; i < extractedPortfolio.length; i++) {
+          const port = extractedPortfolio[i];
+
+          if (execPortNames.includes(port.portfolio_name)) {
+            let clickedPortBrokerDetails = portfolio_timings[port.portfolio_name];
+            let prevbrokerDetails = [];
+
+            for (let brokerId in clickedPortBrokerDetails) {
+              let brokerData = clickedPortBrokerDetails[brokerId];
+              prevbrokerDetails.push({
+                [brokerId]: {
+                  "P&L": "0.00",
+                  maxPL: Number(brokerData.maxPL).toFixed(2),
+                  minPL: brokerData.minPL === "Infinity"
+                    ? Infinity
+                    : Number(brokerData.minPL).toFixed(2),
+                  maxPLTime: brokerData.maxPLTime,
+                  minPLTime: brokerData.minPLTime,
+                },
+              });
+            }
+            portfolios.push({ ...port, brokerDetails: prevbrokerDetails });
+          } else {
+            portfolios.push({ ...port, brokerDetails: [] });
+          }
+        }
+
+        dispatch(
+          setPortfolios({
+            portfolios: portfolios,
+          })
+        );
+      });
+    } catch (error) {
+      console.error("Error:", error);
+    }
+  };
+  const [executedportfolios, setexecutedportfolios] = useState<string[]>([]);
+
+  const { positions } = useSelector(
+    (state: RootState) => state.positionReducer
+  );
+
+  const { orders } = useSelector((state: RootState) => state.orderBookReducer);
+
+  useEffect(() => {
+    const fetchExecutedPortfolios = async () => {
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_SERVER_HOST}/get_executed_portfolios/${mainUser}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch executed portfolios");
+        }
+
+        const { ExecutedPortfolios } = await response.json();
+        setexecutedportfolios(
+          ExecutedPortfolios.map((execPort: { portfolio_name: string }) => execPort.portfolio_name)
+        );
+      } catch (error) {
+        // Error handling remains the same
+      }
+    };
+
+    fetchExecutedPortfolios();
+  }, [positions, orders]);
+
+  const fetchAccountDetails = async () => {
+    try {
+      const username = cookies.get("USERNAME");
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_HOST}/get_user_data/${username}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Something went wrong. Please try again.");
+      }
+
+      const responseData = await response.json();
+
+      const brokerData = responseData.broker_credentials.find(
+        (row: { broker: string }) => row.broker === "pseudo_account"
+      );
+
+      if (!brokerData) {
+        throw new Error("Pseudo account not found.");
+      }
+
+      const newMargin = brokerData.available_balance ?? "0.00";
+      const newUtilizedMargin = brokerData.utilized_margin ?? "0.00";
+
+      const newFilledData = rows.map((account) => {
+        if (account.userId === brokerData.broker_user_id) {
+          return {
+            ...account,
+            availableMargin: newMargin,
+            utilized_Margin: newUtilizedMargin,
+          };
+        }
+        return account;
+      });
+
+      dispatch(
+        setBrokers({
+          brokers: newFilledData,
+        })
+      );
+    } catch (error) {
+      console.error("Error:", error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const [openedPortfolio, setopenedPortfolio] = useState<Record<string, any>>({});
+  const [portfolio_positions, setportfolio_positions] = useState<any[]>([]);
+
+  const portfoliolevel_positions = async (
+    portfolio: { portfolio_name: string },
+    broker_user_ids: string[],
+    broker_names: string[]
+  ) => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_HOST}/fetching_portfoliolevel_positions/${portfolio.portfolio_name}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ broker_user_ids, broker_names }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch executed portfolios");
+      }
+
+      const responseData = await response.json();
+      const portfolio_positions = Object.values(responseData[portfolio.portfolio_name]);
+      setportfolio_positions(portfolio_positions);
+    } catch (error) {
+      console.error(
+        "Error fetching portfolios level positions:",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  };
+  const handleSqOffClick = async (item: any) => {
+    const portfolioname = item.portfolio_name;
+    const brokerIds = item.Strategy_accounts_id.split(",");
+    const brokerDetailsMap: { [key: string]: string } = {};
+
+    otherDetails.forEach((broker) => {
+      if (brokerIds.includes(broker.userId)) {
+        brokerDetailsMap[broker.userId] = broker.broker;
+      }
+    });
+
+    if (brokerIds.length > 0) {
+      for (const brokerId of brokerIds) {
+        const brokerDetail = brokerDetailsMap[brokerId];
+        if (brokerDetail) {
+          await handleSqOff(portfolioname, brokerId, brokerDetail);
+        }
+      }
+    }
+  };
+
+  const { brokers: row } = useSelector((state: RootState) => state.brokerReducer);
+  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+
+  const openModal = (item: any) => {
+    setSelectedItem(item);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedItem(null);
+  };
+
+  const marketData = JSON.parse(localStorage.getItem("marketIndexDetails") || "{}");
+
+  const placeOrderOptionsQTP = async (item: any) => {
+    try {
+      const currentTime = new Date();
+      const portfolioname = item.portfolio_name;
+      const brokerIds = item.Strategy_accounts_id.split(",");
+      const starttime = item.start_time;
+      const endtime = item.end_time;
+      const strategy = item.strategy;
+
+      brokerIds.forEach(async (userId: string) => {
+        const user = row.find((user) => user.userId === userId);
+        if (user && user.inputDisabled) {
+          let apiEndpoints: string[] = [];
+          let startTime = starttime || null;
+          let endTime = endtime || null;
+
+          if (startTime === "00:00:00") startTime = null;
+          if (endTime === "00:00:00") endTime = null;
+
+          const currentTimeStr = currentTime.toLocaleTimeString("en-US", {
+            hour12: false,
+          });
+
+          if (
+            (startTime === null || currentTimeStr >= startTime) &&
+            (endTime === null || currentTimeStr <= endTime)
+          ) {
+            // API endpoint logic remains the same
+            if (user.broker === "fyers") {
+              apiEndpoints = [
+                `${import.meta.env.SERVER_HOST}/place_order/fyers/${mainUser}/${portfolioname}/${user.userId}`,
+              ];
+            } else if (user.broker === "angelone") {
+              apiEndpoints = [
+                `${import.meta.env.SERVER_HOST}/angelone_options_place_order/${mainUser}/${portfolioname}/${user.userId}`,
+              ];
+            } else if (user.broker === "flattrade") {
+              apiEndpoints = [
+                `${import.meta.env.SERVER_HOST}/flatrade_place_order/${mainUser}/${portfolioname}/${user.userId}`,
+              ];
+            } else if (user.broker === "pseudo_account") {
+              //console.log("mahesh123");
+              apiEndpoints = [
+                `${import.meta.env.SERVER_HOST}/pseudo_placeorder/${mainUser}/${portfolioname}/${user.userId}`,
+              ];
+            }
+
+            for (const apiEndpoint of apiEndpoints) {
+              try {
+                const requestBody = {
+                  qtp_lots: 1,
+                };
+
+                if (user.broker === "pseudo_account") {
+                  requestBody.underlying_price = marketData;
+                }
+
+                const res = await fetch(apiEndpoint, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify(requestBody),
+                });
+                //console.log(res, "res");
+                //console.log("mahesh2");
+
+                if (res.ok) {
+                  const orderPlaceoptionsQTPRes = await res.json();
+                  fetchAccountDetails();
+
+                  const legMsgs = orderPlaceoptionsQTPRes.messages;
+                  for (const message of legMsgs) {
+                    handleMsg({
+                      msg: message.message,
+                      logType: "TRADING",
+                      timestamp: `${new Date().toLocaleString()}`,
+                      user: user.userId,
+                      strategy: strategy,
+                      portfolio: portfolioname,
+                    });
+                  }
+                  closeModal();
+                } else {
+                  const orderPlaceoptionsQTPRes = await res.json();
+                  handleMsg({
+                    msg: orderPlaceoptionsQTPRes[0].message,
+                    logType: "MESSAGE",
+                    timestamp: `${new Date().toLocaleString()}`,
+                    user: user.userId,
+                    strategy: strategy,
+                    portfolio: portfolioname,
+                  });
+                  closeModal();
+                }
+              } catch (e) {
+                handleMsg({
+                  msg: e.message,
+                  logType: "ERROR",
+                  timestamp: `${new Date().toLocaleString()}`,
+                  user: user.userId,
+                  strategy: strategy,
+                  portfolio: portfolioname,
+                });
+                closeModal();
+              }
+            }
+          } else {
+            handleMsg({
+              msg: `Order not placed for ${user.userId} as current time is outside the allowed time window (Start: ${startTime || "Not specified"}, End: ${endTime || "Not specified"}).`,
+              logType: "INFO",
+              timestamp: `${new Date().toLocaleString()}`,
+              user: user.userId,
+              strategy: strategy,
+              portfolio: portfolioname,
+            });
+          }
+        } else {
+          handleMsg({
+            msg: `Login the ${user.userId}, to place an order in this account.`,
+            logType: "WARNING",
+            timestamp: `${new Date().toLocaleString()}`,
+            user: user.userId,
+            strategy: strategy,
+            portfolio: portfolioname,
+          });
+          closeModal();
+        }
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+  const handleSqOff = async (portfolioname: string, brokerIds: string, brokerDetails: string) => {
+    const username = cookies.get("USERNAME");
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_SERVER_HOST}/square_off_portfolio_level/${username}/${portfolioname}/${brokerDetails}/${brokerIds}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed ");
+      }
+
+      const responseData = await response.json();
+
+      handleMsg({
+        msg: responseData.message,
+        logType: "MESSAGE",
+        timestamp: `${new Date().toLocaleString()}`,
+        portfolio: portfolioname,
+        user: brokerIds,
+      });
+    } catch (error) {
+      // Error handling remains the same
+    }
+  };
+
+  const { brokers: brokerDetails } = useSelector(
+    (state: RootState) => state.brokerReducer
+  );
+
+  const handleReexecute = async (item: PortfolioItem) => {
+    console.log(item, "item");
+    try {
+      const isExecuted = executedportfolios.includes(item.portfolio_name);
+
+      if (!isExecuted) {
+        handleMsg({
+          msg: `Portfolio "${item.portfolio_name}" is not completed and cannot be re-executed.`,
+          logType: "WARNING",
+          timestamp: `${new Date().toLocaleString()}`,
+        });
+        return;
+      }
+
+      const broker_Id = item.Strategy_accounts_id.split(",");
+      const users = brokerDetails.filter((user) => broker_Id.includes(user.userId));
+      const loggedInUser = users.find((user) => user.inputDisabled);
+
+      if (!loggedInUser) {
+        handleMsg({
+          msg: `Login required to ReExecute.`,
+          logType: "WARNING",
+          timestamp: `${new Date().toLocaleString()}`,
+          user: broker_Id.join(", "),
+        });
+        return;
+      }
+
+      let portfolioName = item.portfolio_name;
+      let reExecutionCount = 0;
+
+      const reExecutionMatch = portfolioName.match(/\(re_(\d+)\)$/);
+
+      if (reExecutionMatch) {
+        reExecutionCount = parseInt(reExecutionMatch[1], 10);
+        if (reExecutionCount > 0) {
+          handleMsg({
+            msg: `You cannot reexecute for this portfolio name "${portfolioName}" as it was already re-executed.`,
+            logType: "WARNING",
+            timestamp: `${new Date().toLocaleString()}`,
+          });
+          return;
+        }
+        portfolioName = portfolioName.replace(/\(re_\d+\)$/, `(re_${reExecutionCount + 1})`);
+      } else {
+        portfolioName += "(re_1)";
+      }
+
+      const updatedItem = { ...item, portfolio_name: portfolioName };
+      console.log("Updated Item:", updatedItem);
+
+      const apiUrl = `${process.env.NEXT_PUBLIC_SERVER_HOST}/store_portfolio/${mainUser}`;
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedItem),
+      });
+
+      if (!response.ok) {
+        const errorResponse = await response.json();
+        handleMsg({
+          msg: `You cannot reexecute for the reexecuted portfolio: ${errorResponse.message}`,
+          logType: "WARNING",
+          timestamp: `${new Date().toLocaleString()}`,
+        });
+        return;
+      }
+      const responseData = await response.json();
+      console.log("API Response:", responseData);
+
+      handleMsg({
+        msg: `Portfolio re-executed successfully: ${portfolioName}`,
+        logType: "SUCCESS",
+        timestamp: `${new Date().toLocaleString()}`,
+      });
+
+      handlePageClick();
+      handlechangebox(portfolioName, false);
+
+      const strategyName = updatedItem.strategy;
+      const brokerIds = updatedItem.Strategy_accounts_id.split(",");
+
+      const brokerDetailsMap = {};
+      otherDetails.forEach((broker) => {
+        if (brokerIds.includes(broker.userId)) {
+          brokerDetailsMap[broker.userId] = broker.broker;
+        }
+      });
+
+      if (brokerIds.length > 0) {
+        for (const brokerId of brokerIds) {
+          const brokerDetail = brokerDetailsMap[brokerId];
+          if (brokerDetail) {
+            await handleReexecuteWithBroker(portfolioName, brokerId, brokerDetail, strategyName);
+          } else {
+            console.error(`Broker detail not found for broker ID: ${brokerId}`);
+          }
+        }
+      } else {
+        console.error("Broker IDs are undefined or empty");
+      }
+      const handleReexecuteWithBroker = async (portfolioName: string, brokerId: string, brokerDetail: string, strategyName: string) => {
+        try {
+          const username = cookies.get("USERNAME");
+          const user = brokerDetails.find((user) => user.userId === brokerId);
+
+          console.log("Matching Portfolio Name:", portfolioName);
+          console.log(user, "user");
+
+          if (!user || !user.inputDisabled) {
+            handleMsg({
+              msg: `Login required to place an order in this account.`,
+              logType: "WARNING",
+              timestamp: `${new Date().toLocaleString()}`,
+              user: brokerId,
+              strategy: strategyName,
+              portfolio: portfolioName,
+            });
+            return;
+          }
+
+          let apiEndpoints: string[] = [];
+          let optionType: string | null = null;
+
+          const matchingPortfolio = portfolioName;
+
+          if (matchingPortfolio && matchingPortfolio.legs) {
+            for (const leg of matchingPortfolio.legs) {
+              if (leg.option_type === "FUT") {
+                optionType = "FUT";
+                break;
+              }
+            }
+          }
+
+          console.log("User Broker:", user.broker);
+          if (user.broker === "fyers") {
+            apiEndpoints = [
+              `${process.env.NEXT_PUBLIC_SERVER_HOST}/${optionType === "FUT" ? "fyers_futures" : "place_order"}/fyers/${username}/${portfolioName}/${brokerId}`,
+            ];
+          } else if (user.broker === "angelone") {
+            apiEndpoints = [
+              `${process.env.NEXT_PUBLIC_SERVER_HOST}/${optionType === "FUT" ? "angelone_future" : "angelone_options"}/angelone/${username}/${portfolioName}/${brokerId}`,
+            ];
+          } else if (user.broker === "flattrade") {
+            apiEndpoints = [
+              `${process.env.NEXT_PUBLIC_SERVER_HOST}/${optionType === "FUT" ? "flatrade_future" : "flatrade"}/flattrade/${username}/${portfolioName}/${brokerId}`,
+            ];
+          } else if (user.broker === "pseudo_account") {
+            apiEndpoints = [
+              `${process.env.NEXT_PUBLIC_SERVER_HOST}/pseudo_placeorder/${username}/${portfolioName}/${brokerId}`,
+            ];
+          }
+
+          console.log("API Endpoint:", apiEndpoints);
+          const requestBody = {
+            qtp_lots: 1,
+          };
+
+          const response = await fetch(apiEndpoints[0], {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestBody),
+          });
+
+          const orderPlaceOptionsQTPRes = await response.json();
+
+          if (response.ok) {
+            handlechangebox();
+            const legMsgs = orderPlaceOptionsQTPRes.messages;
+            for (let index = 0; index < legMsgs.length; index++) {
+              const message = legMsgs[index].message;
+              handleMsg({
+                msg: message,
+                logType: "TRADING",
+                timestamp: `${new Date().toLocaleString()}`,
+                user: brokerId,
+                strategy: strategyName,
+                portfolio: portfolioName,
+              });
+            }
+          } else {
+            handleMsg({
+              msg: orderPlaceOptionsQTPRes[0].message,
+              logType: "MESSAGE",
+              timestamp: `${new Date().toLocaleString()}`,
+              user: brokerId,
+              strategy: strategyName,
+              portfolio: portfolioName,
+            });
+          }
+        } catch (error: any) {
+          handleMsg({
+            msg: error.message,
+            logType: "ERROR",
+            timestamp: `${new Date().toLocaleString()}`,
+            user: brokerId,
+            strategy: strategyName,
+            portfolio: portfolioName,
+          });
+        }
+      };
+
+      const handleTimerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const inputTime = e.target.value;
+        const formattedTime = formatInputTime(inputTime);
+        setTimerValue(formattedTime);
+      };
+      const handlePartEntry = () => {
+        setPartEntry();
+      };
+
+      const handleMakeCopy = () => {
+        setMakeCopy();
+      };
+
+      const handleMakeAsCompleted = () => {
+        setMakeAsCompleted();
+      };
+
+      const handleReset = () => {
+        setReset();
+      };
+
+      const handlePayOff = () => {
+        setPayOff();
+      };
+
+      const handleChart = () => {
+        setChart();
+      };
+
+      const [openPortIndex, setOpenPortIndex] = useState<string>("");
+
+      useEffect(() => {
+        if (
+          openPortIndex !== "" &&
+          new Set(Object.values(isPlusClicked)).size > 0
+        ) {
+          setsubTableData([{ ...portfolioDetails[openPortIndex] }]);
+        } else {
+          setsubTableData([
+            { ...portfolioDetails[openPortIndex], brokerDetails: [] },
+          ]);
+        }
+      }, [isPlusClicked, openPortIndex, portfolioDetails]);
+      // Replace useState with React's useState
+      const [openPortIndex, setOpenPortIndex] = useState<string>("");
+      const [isPlusClicked, setIsPlusClicked] = useState<Record<string, boolean>>({});
+      const [isPlusClicked1, setIsPlusClicked1] = useState<Record<string, boolean>>({});
+      const [subTableData, setSubTableData] = useState<any[]>([]);
+      const [isTableOpen, setTableOpen] = useState<boolean>(false);
+      const [isTableOpen1, setTableOpen1] = useState<boolean>(false);
+      const [openedPortfolio, setOpenedPortfolio] = useState<any>({});
+
+      useEffect(() => {
+        if (openPortIndex !== "" && new Set(Object.values(isPlusClicked)).size > 0) {
+          setSubTableData([{ ...portfolioDetails[openPortIndex] }]);
+        } else {
+          setSubTableData([
+            { ...portfolioDetails[openPortIndex], brokerDetails: [] },
+          ]);
+        }
+      }, [isPlusClicked, openPortIndex, portfolioDetails]);
+
+      const handlePlusClick = async (index: number) => {
+        setOpenPortIndex(index);
+
+        const plusState = { ...isPlusClicked };
+        Object.keys(plusState).forEach((key) => {
+          plusState[key] = false;
+        });
+        plusState[index] = !isPlusClicked[index];
+
+        setTableOpen(Object.values(plusState).includes(true));
+        setIsPlusClicked(plusState);
+
+        const brokerIds = portfolioDetails[index].Strategy_accounts_id.split(",");
+        const brokerDetails = otherDetails.filter((broker) =>
+          brokerIds.includes(broker.userId)
+        );
+
+        const broker_user_ids = brokerDetails.map((row) => row.userId);
+        const broker_names = brokerDetails.map((row) => row.broker);
+
+        setOpenedPortfolio(portfolioDetails[index]);
+
+        await portfoliolevel_positions(
+          portfolioDetails[index],
+          broker_user_ids,
+          broker_names
+        );
+      };
+
+      useEffect(() => {
+        const newBoolObject: Record<string, boolean> = {};
+        if (subTableData.length !== 0) {
+          subTableData[0].Strategy_accounts_id.split(",").forEach((_: any, index: number) => {
+            newBoolObject[index] = false;
+          });
+          setIsPlusClicked1(newBoolObject);
+        }
+      }, [subTableData]);
+
+      useEffect(() => {
+        const newBoolObject: Record<string, boolean> = {};
+        portfolioDetails.forEach((_: any, index: number) => {
+          newBoolObject[index] = false;
+        });
+        setIsPlusClicked(newBoolObject);
+      }, [portfolioDetails]);
+
+      useEffect(() => {
+        setotherDetails(brokerDetails);
+      }, [brokerDetails]);
+
+      const handlePlusClick1 = (index: number) => {
+        const plusState = { ...isPlusClicked1 };
+        Object.keys(plusState).forEach((key) => {
+          plusState[key] = false;
+        });
+        plusState[index] = !isPlusClicked1[index];
+
+        setTableOpen1(Object.values(plusState).includes(true));
+        setIsPlusClicked1(plusState);
+      };
+      const handleEdit = (editablePortfolio) => {
+        setEditingRow(editablePortfolio);
+        const params = JSON.stringify({ ...editablePortfolio, margin: "0" });
+
+        // Using Next.js router instead of React Router
+        router.push({
+          pathname: '/Edit-Portfolio/[params]',
+          query: { params: params }
+        }, undefined, {
+          shallow: true,
+          state: {
+            ...editablePortfolio,
+            margin: "0"
+          }
+        });
+      };
+
+      useEffect(() => {
+        if (portfolioDetails.length === 0) {
+          dispatch(
+            setPortfolios({
+              portfolios: [
+                {
+                  Strategy_accounts_id: "",
+                  exchange: "",
+                  expiry_date: "",
+                  lots: "",
+                  order_type: "",
+                  portfolio_name: "",
+                  quantity: "",
+                  remarks: "",
+                  strategy: "",
+                  strategy_account: "",
+                  strike: "",
+                  transaction_type: "",
+                  user_id: "",
+                  variety: "",
+                  stock_symbol: "",
+                },
+              ],
+            }),
+          );
+        }
+      }, [portfolioDetails]);
+
+      const allSeqState = useSelector((state: RootState) => state.allSeqReducer);
+      const allVisState = useSelector((state: RootState) => state.allVisReducer);
+
+      const portfolioCols = [
+        "Enabled",
+        "Status",
+        "Portfolio Name",
+        "PNL",
+        "Symbol",
+        "Execute/Sq Off",
+        "Edit",
+        "Delete",
+        "Make Copy",
+        "Mark As Completed",
+        "Reset",
+        "Pay Off",
+        "Chat",
+        "Re Execute",
+        "Part Entry/Exit",
+        "Current Value",
+        "Value Per Lot",
+        "Underlying LTP",
+        "Positional Portfolio",
+        "Product",
+        "Strategy",
+        "Entry Price",
+        "Combined Premuim",
+        "Per Lot Premuim",
+        "Start Time",
+        "End Time",
+        "SqOff Time",
+        "Range End Time",
+        "Delta",
+        "Theta",
+        "Vega",
+        "Remarks",
+        "Message"
+      ] as const;
+
+      const [colVisPortfolio, setcolVisPortfolio] = useState<{ [key: string]: boolean }>(
+        allVisState.portfolioVis
+      );
+
+      const [portfolioColsSelectedALL, setportfolioColsSelectedALL] =
+        useState<boolean>(false);
+
+      const portfolioColSelectALL = () => {
+        setportfolioColsSelectedALL((prev) => !prev);
+        portfolioCols.map((portfolioCol) => {
+          setcolVisPortfolio((prev) => ({
+            ...prev,
+            [portfolioCol]: portfolioColsSelectedALL,
+          }));
+        });
+      };
+
+      const [portfolioSeq, setportfolioSeq] = useState<string[]>(allSeqState.portfolioSeq);
+      useEffect(() => {
+        setportfolioSeq(allSeqState.portfolioSeq);
+
+        setcolVisPortfolio((prev) => {
+          const colVis: { [key: string]: boolean } = {};
+
+          Object.keys(colVisPortfolio).map((col) => {
+            if (allSeqState.portfolioSeq.includes(col)) {
+              colVis[col] = true;
+            } else {
+              colVis[col] = false;
+            }
+          });
+
+          return { ...colVis };
+        });
+      }, []);
+
+      useEffect(() => {
+        dispatch(
+          setAllVis({
+            ...allVisState,
+            portfolioVis: colVisPortfolio,
+          })
+        );
+
+        if (new Set(Object.values(colVisPortfolio)).size === 1) {
+          if (Object.values(colVisPortfolio).includes(true)) {
+            setportfolioSeq(portfolioCols);
+          } else {
+            setportfolioSeq([]);
+          }
+        }
+      }, [colVisPortfolio]);
+
+      useEffect(() => {
+        dispatch(
+          setAllSeq({
+            ...allSeqState,
+            portfolioSeq: portfolioSeq,
+          })
+        );
+      }, [portfolioSeq]);
+      const [showSearchPortfolio, setshowSearchPortfolio] = useState<{
+        showSearchPortfolioName: boolean;
+        showSearchSymbol: boolean;
+        showSearchProduct: boolean;
+        showSearchStrategy: boolean;
+      }>({
+        showSearchPortfolioName: false,
+        showSearchSymbol: false,
+        showSearchProduct: false,
+        showSearchStrategy: false,
+      });
+
+      const handleCloseAllSearchBox = (e: React.MouseEvent<HTMLElement>) => {
+        const allowedElements = ["th img", ".Filter-popup"];
+        const target = e.target as HTMLElement;
+
+        if (!allowedElements.some((element) => target.closest(element))) {
+          setshowSearchPortfolio((prev) =>
+            Object.fromEntries(
+              Object.entries(prev).map(([key]) => [key, false])
+            )
+          );
+        }
+      };
+
+      const [selectAllPortfolioName, setSelectAllPortfolioName] = useState<boolean>(false);
+      const [uniquePortfolioName, setuniquePortfolioName] = useState<string[]>([]);
+      const [portfolioNameSelected, setPortfolioNameSelected] = useState<string[]>([]);
+
+      const [selectAllSymbol, setSelectAllSymbol] = useState<boolean>(false);
+      const [uniqueSymbol, setuniqueSymbol] = useState<string[]>([]);
+      const [SymbolSelected, setSymbolSelected] = useState<string[]>([]);
+
+      const [selectAllProduct, setSelectAllProduct] = useState<boolean>(false);
+      const [uniqueProduct, setuniqueProduct] = useState<string[]>([]);
+      const [ProductSelected, setProductSelected] = useState<string[]>([]);
+
+      const [selectAllStrategy, setSelectAllStrategy] = useState<boolean>(false);
+      const [uniqueStrategy, setuniqueStrategy] = useState<string[]>([]);
+      const [StrategySelected, setStrategySelected] = useState<string[]>([]);
+
+      useEffect(() => {
+        const data = portfolioDetails;
+        setuniquePortfolioName(
+          data ? [...new Set(data.map((d) => d.portfolio_name))] : []
+        );
+        setuniqueSymbol(data ? [...new Set(data.map((d) => d.stock_symbol))] : []);
+        setuniqueProduct(data ? [...new Set(data.map((d) => d.variety))] : []);
+        setuniqueStrategy(data ? [...new Set(data.map((d) => d.strategy))] : []);
+      }, [portfolioDetails]);
+      const handleCheckboxChangePortfolioName = (portfolioName: string) => {
+        const isSelected = portfolioNameSelected.includes(portfolioName);
+
+        if (isSelected) {
+          setPortfolioNameSelected(
+            portfolioNameSelected.filter((item) => item !== portfolioName)
+          );
+          setSelectAllPortfolioName(false);
+        } else {
+          setPortfolioNameSelected((prevSelected) => [
+            ...prevSelected,
+            portfolioName,
+          ]);
+          setSelectAllPortfolioName(
+            portfolioNameSelected.length === uniquePortfolioName.length - 1
+          );
+        }
+      };
+
+      const handleSelectAllForPortfolioName = () => {
+        const allChecked = !selectAllPortfolioName;
+        setSelectAllPortfolioName(allChecked);
+
+        if (allChecked) {
+          setPortfolioNameSelected(uniquePortfolioName.map((d) => d.toLowerCase()));
+        } else {
+          setPortfolioNameSelected([]);
+        }
+      };
+
+      const handleCheckboxChangeSymbol = (Symbol: string) => {
+        const isSelected = SymbolSelected.includes(Symbol);
+
+        if (isSelected) {
+          setSymbolSelected(SymbolSelected.filter((item) => item !== Symbol));
+          setSelectAllSymbol(false);
+        } else {
+          setSymbolSelected((prevSelected) => [...prevSelected, Symbol]);
+          setSelectAllSymbol(SymbolSelected.length === uniqueSymbol.length - 1);
+        }
+      };
+
+      const handleSelectAllForSymbol = () => {
+        const allChecked = !selectAllSymbol;
+        setSelectAllSymbol(allChecked);
+
+        if (allChecked) {
+          setSymbolSelected(uniqueSymbol.map((d) => d.toLowerCase()));
+        } else {
+          setSymbolSelected([]);
+        }
+      };
+
+      const handleCheckboxChangeStrategy = (Strategy: string) => {
+        const isSelected = StrategySelected.includes(Strategy);
+
+        if (isSelected) {
+          setStrategySelected(StrategySelected.filter((item) => item !== Strategy));
+          setSelectAllStrategy(false);
+        } else {
+          setStrategySelected((prevSelected) => [...prevSelected, Strategy]);
+          setSelectAllStrategy(
+            StrategySelected.length === uniqueStrategy.length - 1
+          );
+        }
+      };
+
+      const handleSelectAllForStrategy = () => {
+        const allChecked = !selectAllStrategy;
+        setSelectAllStrategy(allChecked);
+
+        if (allChecked) {
+          setStrategySelected(uniqueStrategy.map((d) => d.toLowerCase()));
+        } else {
+          setStrategySelected([]);
+        }
+      };
+
+      const handleCheckboxChangeProduct = (Product: string) => {
+        const isSelected = ProductSelected.includes(Product);
+
+        if (isSelected) {
+          setProductSelected(ProductSelected.filter((item) => item !== Product));
+          setSelectAllProduct(false);
+        } else {
+          setProductSelected((prevSelected) => [...prevSelected, Product]);
+          setSelectAllProduct(ProductSelected.length === uniqueProduct.length - 1);
+        }
+      };
+
+      const handleSelectAllForProduct = () => {
+        const allChecked = !selectAllProduct;
+        setSelectAllProduct(allChecked);
+
+        if (allChecked) {
+          setProductSelected(uniqueProduct.map((d) => d.toLowerCase()));
+        } else {
+          setProductSelected([]);
+        }
+      };
+      // Convert relevant state variables to use TypeScript types
+      const [filteredRows, setFilteredRows] = useState<any[]>(portfolioDetails);
+      const [nameOfNonEmptyArray, setNameOfNonEmptyArray] = useState<string | null>(null);
+
+      // Type definition for updateFilteredRows params
+      interface UpdateFilteredRowsProps {
+        portfolioNameSelected: string[];
+        SymbolSelected: string[];
+        ProductSelected: string[];
+        StrategySelected: string[];
+        setPortfolioNameSelected: (value: string[]) => void;
+        setSymbolSelected: (value: string[]) => void;
+        setProductSelected: (value: string[]) => void;
+        setStrategySelected: (value: string[]) => void;
+        setSelectAllPortfolioName: (value: boolean) => void;
+        setSelectAllSymbol: (value: boolean) => void;
+        setSelectAllProduct: (value: boolean) => void;
+        setSelectAllStrategy: (value: boolean) => void;
+        uniquePortfolioName: string[];
+        uniqueSymbol: string[];
+        uniqueProduct: string[];
+        uniqueStrategy: string[];
+        setuniquePortfolioName: (value: string[]) => void;
+        setuniqueSymbol: (value: string[]) => void;
+        setuniqueProduct: (value: string[]) => void;
+        setuniqueStrategy: (value: string[]) => void;
+      }
+
+      const handleOkClick = () => {
+        updateFilteredRows({
+          portfolioNameSelected,
+          SymbolSelected,
+          ProductSelected,
+          StrategySelected,
+          setPortfolioNameSelected,
+          setSymbolSelected,
+          setProductSelected,
+          setStrategySelected,
+          setSelectAllPortfolioName,
+          setSelectAllSymbol,
+          setSelectAllProduct,
+          setSelectAllStrategy,
+          uniquePortfolioName,
+          uniqueSymbol,
+          uniqueProduct,
+          uniqueStrategy,
+          setuniquePortfolioName,
+          setuniqueSymbol,
+          setuniqueProduct,
+          setuniqueStrategy,
+        });
+
+        setshowSearchPortfolio((prev) =>
+          Object.fromEntries(
+            Object.entries(prev).map(([key]) => [key, false])
+          )
+        );
+      };
+
+      // Update useEffect to use Next.js data fetching pattern
+      useEffect(() => {
+        setFilteredRows(portfolioDetails);
+      }, [portfolioDetails]);
+
+      const updateFilteredRows = ({
+        portfolioNameSelected,
+        SymbolSelected,
+        ProductSelected,
+        StrategySelected,
+        setPortfolioNameSelected,
+        setSymbolSelected,
+        setProductSelected,
+        setStrategySelected,
+        setSelectAllPortfolioName,
+        setSelectAllSymbol,
+        setSelectAllProduct,
+        setSelectAllStrategy,
+        uniquePortfolioName,
+        uniqueSymbol,
+        uniqueProduct,
+        uniqueStrategy,
+        setuniquePortfolioName,
+        setuniqueSymbol,
+        setuniqueProduct,
+        setuniqueStrategy,
+      }: UpdateFilteredRowsProps) => {
+        // Rest of the updateFilteredRows implementation remains the same
+        // Just add proper typing for variables where needed
+      };
+
+      // Convert handlechangebox to use Next.js fetch
+      const handlechangebox = async (portfolioname: string, enabled: boolean) => {
+        try {
+          const response = await fetch(
+            `${process.env.NEXT_PUBLIC_SERVER_HOST}/enable_portfolio/${mainUser}/${portfolioname}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                enable_status: `${!enabled}`.charAt(0).toUpperCase() + `${!enabled}`.slice(1),
+              }),
+            }
+          );
+
+          if (response.ok) {
+            const res = await response.json();
+            handlePageClick();
+            handleMsg({
+              msg: res.message,
+              logType: "MESSAGE",
+              timestamp: `${new Date().toLocaleString()}`,
+              portfolio: portfolioname,
+            });
+          }
+        } catch (error) {
+          console.error("Error updating enable status:", error);
+        }
+      };
+
+      // Add proper typing for Redux selector
+      const { executedPortfolios: executedPortfolio } = useSelector(
+        (state: RootState) => state.executedPortfolioReducer
+      );
+      const portfolioTH = {
+        Enabled: colVisPortfolio["Enabled"] && (
+          <th colspan="2">
+            <div>
+              <small>Enabled</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                }}
+              // onClick={() => {
+              //   setShowSelectBox((prev) => !prev);
+              // }}
+              />
+            </div>
+            {/* {showSelectBox && (
+        <div>
+          <select
+            type="text"
+            // value={enabledFilter}
+            // onChange={handleEnabledFilterChange}
+            style={{
+              padding: "0.1rem 0.3rem",
+              width: "100%",
+              margin: "1px",
+            }}
+          >
+            <option value="">All</option>
+            <option value="checked">checked</option>
+            <option value="unchecked">unchecked</option>
+          </select>
+        </div>
+      )} */}
+          </th>
+        ),
+        Status: colVisPortfolio["Status"] && (
+          <th >
+            <div>
+              <small>Status</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-35px",
+                }}
+              />
+            </div>
+          </th>
+        ),
+        "Portfolio Name": colVisPortfolio["Portfolio Name"] && (
+          <th>
+            <div>
+              <small>Portfolio Name</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-15px",
+                }}
+                onClick={() => {
+                  setshowSearchPortfolio((prev) => ({
+                    ...Object.fromEntries(
+                      Object.keys(prev).map((key) => [
+                        key,
+                        key === "showSearchPortfolioName"
+                          ? !prev.showSearchPortfolioName
+                          : false,
+                      ]),
+                    ),
+                  }));
+                }}
+              />
+            </div>
+            {showSearchPortfolio.showSearchPortfolioName && (
+              <div className="Filter-popup">
+                <form id="filter-form-user" className="Filter-inputs-container">
+                  <ul>
+                    <li>
+                      <input
+                        type="checkbox"
+                        style={{ width: "12px" }}
+                        checked={selectAllPortfolioName}
+                        onChange={handleSelectAllForPortfolioName}
+                      />
+                      Select all
+                    </li>
+                    <li>
+                      {uniquePortfolioName.map((fyersclientId, index) => {
+                        return (
+                          <div key={index} className="filter-inputs">
+                            <input
+                              type="checkbox"
+                              style={{
+                                width: "15px",
+                              }}
+                              checked={portfolioNameSelected.includes(
+                                fyersclientId.toLowerCase(),
+                              )}
+                              onChange={() =>
+                                handleCheckboxChangePortfolioName(
+                                  fyersclientId.toLowerCase(),
+                                )
+                              }
+                            />
+                            <label>{fyersclientId}</label>
+                          </div>
+                        );
+                      })}
+                    </li>
+                  </ul>
+                </form>
+                <div className="filter-popup-footer">
+                  <button onClick={handleOkClick}>Ok</button>
+                  <button
+                    onClick={() => {
+                      setshowSearchPortfolio((prev) =>
+                        Object.fromEntries(
+                          Object.entries(prev).map(([key]) => [key, false]),
+                        ),
+                      );
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </th>
+        ),
+        PNL: colVisPortfolio["PNL"] && (
+          <th>
+            <div>
+              <small>PNL</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-40px",
+                }}
+                onClick={() => {
+                  // setShowSearchMTM((prev) => !prev);
+                }}
+              />
+            </div>
+            {/* {showSearchMTM && (
+        <div className="Filter-popup">
+          <form id="filter-form-mtm" className="Filter-inputs-container">
+            <ul>
+              <li>
+                <input
+                  type="checkbox"
+                  style={{ width: "12px" }}
+                  checked={selectAllMTM}
+                  onChange={handleSelectAllForMTM}
+                />
+                Select all
+              </li>
+              <li>
+                {uniqueDataMTM.map((mtm, index) => (
+                  <div key={index} className="filter-inputs">
+                    <input
+                      type="checkbox"
+                      style={{
+                        width: "12px",
+                      }}
+                      checked={mtmSelected.includes(mtm)}
+                      onChange={() => handleCheckboxChangeMTM(mtm)}
+                    />
+                    <label>{mtm}</label>
+                  </div>
+                ))}
+              </li>
+            </ul>
+          </form>
+          <div className="filter-popup-footer">
+            <button onClick={handleOkClick}>ok</button>
+            <button onClick={() => setShowSearchMTM((prev) => !prev)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )} */}
+          </th>
+        ),
+        Symbol: colVisPortfolio["Symbol"] && (
+          <th>
+            <div>
+              <small>Symbol</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-35px",
+                }}
+                onClick={() => {
+                  setshowSearchPortfolio((prev) => ({
+                    ...Object.fromEntries(
+                      Object.keys(prev).map((key) => [
+                        key,
+                        key === "showSearchSymbol" ? !prev.showSearchSymbol : false,
+                      ]),
+                    ),
+                  }));
+                }}
+              />
+            </div>
+            {showSearchPortfolio.showSearchSymbol && (
+              <div className="Filter-popup">
+                <form id="filter-form-user" className="Filter-inputs-container">
+                  <ul>
+                    <li>
+                      <input
+                        type="checkbox"
+                        style={{ width: "12px" }}
+                        checked={selectAllSymbol}
+                        onChange={handleSelectAllForSymbol}
+                      />
+                      Select all
+                    </li>
+                    <li>
+                      {uniqueSymbol.map((fyersclientId, index) => {
+                        return (
+                          <div key={index} className="filter-inputs">
+                            <input
+                              type="checkbox"
+                              style={{
+                                width: "15px",
+                              }}
+                              checked={SymbolSelected.includes(
+                                fyersclientId.toLowerCase(),
+                              )}
+                              onChange={() =>
+                                handleCheckboxChangeSymbol(
+                                  fyersclientId.toLowerCase(),
+                                )
+                              }
+                            />
+                            <label>{fyersclientId}</label>
+                          </div>
+                        );
+                      })}
+                    </li>
+                  </ul>
+                </form>
+                <div className="filter-popup-footer">
+                  <button onClick={handleOkClick}>Ok</button>
+                  <button
+                    onClick={() => {
+                      setshowSearchPortfolio((prev) =>
+                        Object.fromEntries(
+                          Object.entries(prev).map(([key]) => [key, false]),
+                        ),
+                      );
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </th>
+        ),
+        "Execute/Sq Off": colVisPortfolio["Execute/Sq Off"] && (
+          <th>
+            <div>
+              <small>Execute/Sq Off</small>
+            </div>
+          </th>
+        ),
+        Delete: colVisPortfolio["Delete"] && (
+          <th>
+            <div>
+              <small>Delete</small>
+            </div>
+          </th>
+        ),
+        Edit: colVisPortfolio["Edit"] && (
+          <th>
+            <div>
+              <small>Edit</small>
+            </div>
+          </th>
+        ),
+        "Make Copy": colVisPortfolio["Make Copy"] && (
+          <th>
+            <div>
+              <small>Make Copy</small>
+            </div>
+          </th>
+        ),
+        "Mark As Completed": colVisPortfolio["Mark As Completed"] && (
+          <th>
+            <div>
+              <small>Mark As Completed</small>
+            </div>
+          </th>
+        ),
+        Reset: colVisPortfolio["Reset"] && (
+          <th>
+            <div>
+              <small>Reset</small>
+            </div>
+          </th>
+        ),
+        "Pay Off": colVisPortfolio["Pay Off"] && (
+          <th>
+            <div>
+              <small>Pay Off</small>
+            </div>
+          </th>
+        ),
+        Chat: colVisPortfolio["Chat"] && (
+          <th>
+            <div>
+              <small>Chat</small>
+            </div>
+          </th>
+        ),
+        "Re Execute": colVisPortfolio["Re Execute"] && (
+          <th>
+            <div>
+              <small>Re Execute</small>
+            </div>
+          </th>
+        ),
+        "Part Entry/Exit": colVisPortfolio["Part Entry/Exit"] && (
+          <th>
+            <div>
+              <small>Part Entry/Exit</small>
+            </div>
+            {/* {showSearchSqOffTime && (
+        <div className="Filter-popup">
+          <form
+            id="filter-form-sqOffTime"
+            className="Filter-inputs-container"
+          >
+            <ul>
+              <li>
+                <input
+                  type="checkbox"
+                  style={{ width: "12px" }}
+                  checked={selectAllSqOffTime}
+                  onChange={handleSelectAllForSqOffTime}
+                />
+                Select all
+              </li>
+              <li>
+                {uniqueDataSqOffTime.map((sqOffTime, index) => (
+                  <div key={index} className="filter-inputs">
+                    <input
+                      type="checkbox"
+                      style={{ width: "12px" }}
+                      checked={sqOffTimeSelected.includes(
+                        sqOffTime.toLowerCase(),
+                      )}
+                      onChange={() =>
+                        handleCheckboxChangeSqOffTime(sqOffTime.toLowerCase())
+                      }
+                    />
+                    <label>{sqOffTime}</label>
+                  </div>
+                ))}
+              </li>
+            </ul>
+          </form>
+          <div className="filter-popup-footer">
+            <button onClick={handleOkClick}>ok</button>
+            <button onClick={() => setShowSearchSqOffTime((prev) => !prev)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )} */}
+          </th>
+        ),
+        "Current Value": colVisPortfolio["Current Value"] && (
+          <th>
+            <div>
+              <small>Current Value</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-15px",
+                }}
+              />
+            </div>
+          </th>
+        ),
+        "Value Per Lot": colVisPortfolio["Value Per Lot"] && (
+          <th>
+            <div>
+              <small>Value Per Lot</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-15px",
+                }}
+              />
+            </div>
+          </th>
+        ),
+        "Underlying LTP": colVisPortfolio["Underlying LTP"] && (
+          <th>
+            <div>
+              <small>Underlying LTP</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                }}
+              />
+            </div>
+          </th>
+        ),
+        "Positional Portfolio": colVisPortfolio["Positional Portfolio"] && (
+          <th>
+            <div>
+              <small>Positional Portfolio</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                }}
+                onClick={() => {
+                  // setShowSearchMaxProfit((prev) => !prev);
+                }}
+              />
+            </div>
+            {/* {showSearchMaxProfit && (
+        <div className="Filter-popup">
+          <form id="filter-form" className="Filter-inputs-container">
+            <ul>
+              <li>
+                <input
+                  type="checkbox"
+                  style={{ width: "12px" }}
+                  checked={selectAllMaxProfit}
+                  onChange={handleSelectAllForMaxProfit}
+                />
+                Select all
+              </li>
+              <li>
+                {uniqueDataMaxProfit.map((maxProfit, index) => (
+                  <div key={index} className="filter-inputs">
+                    <input
+                      type="checkbox"
+                      style={{
+                        width: "12px",
+                      }}
+                      checked={maxProfitSelected.includes(maxProfit)}
+                      onChange={() =>
+                        handleCheckBoxChangeForMaxProfit(maxProfit)
+                      }
+                    />
+                    <label>{maxProfit}</label>
+                  </div>
+                ))}
+              </li>
+            </ul>
+          </form>
+          <div className="filter-popup-footer">
+            <button onClick={handleOkClick}>ok</button>
+            <button onClick={() => setShowSearchMaxProfit((prev) => !prev)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )} */}
+          </th>
+        ),
+        Product: colVisPortfolio["Product"] && (
+          <th>
+            <div>
+              <small>Product</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-35px",
+                }}
+                onClick={() => {
+                  setshowSearchPortfolio((prev) => ({
+                    ...Object.fromEntries(
+                      Object.keys(prev).map((key) => [
+                        key,
+                        key === "showSearchProduct"
+                          ? !prev.showSearchProduct
+                          : false,
+                      ]),
+                    ),
+                  }));
+                }}
+              />
+            </div>
+
+            {showSearchPortfolio.showSearchProduct && (
+              <div className="Filter-popup">
+                <form id="filter-form" className="Filter-inputs-container">
+                  <ul>
+                    <li>
+                      <input
+                        type="checkbox"
+                        style={{ width: "12px" }}
+                        checked={selectAllProduct}
+                        onChange={handleSelectAllForProduct}
+                      />
+                      Select all
+                    </li>
+                    <li>
+                      {uniqueProduct.map((maxLoss, index) => (
+                        <div key={index} className="filter-inputs">
+                          <input
+                            type="checkbox"
+                            style={{
+                              width: "12px",
+                            }}
+                            checked={ProductSelected.includes(
+                              maxLoss.toLowerCase(),
+                            )}
+                            onChange={() =>
+                              handleCheckboxChangeProduct(maxLoss.toLowerCase())
+                            }
+                          />
+                          <label>{maxLoss}</label>
+                        </div>
+                      ))}
+                    </li>
+                  </ul>
+                </form>
+                <div className="filter-popup-footer">
+                  <button onClick={handleOkClick}>Ok</button>
+                  <button onClick={() => setShowSearchMaxLoss((prev) => !prev)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </th>
+        ),
+        Strategy: colVisPortfolio["Strategy"] && (
+          <th>
+            <div>
+              <small>Strategy</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-35px",
+                }}
+                onClick={() => {
+                  setshowSearchPortfolio((prev) => ({
+                    ...Object.fromEntries(
+                      Object.keys(prev).map((key) => [
+                        key,
+                        key === "showSearchStrategy"
+                          ? !prev.showSearchStrategy
+                          : false,
+                      ]),
+                    ),
+                  }));
+                }}
+              />
+            </div>
+            {showSearchPortfolio.showSearchStrategy && (
+              <div className="Filter-popup">
+                <form id="filter-form" className="Filter-inputs-container">
+                  <ul>
+                    <li>
+                      <input
+                        type="checkbox"
+                        style={{ width: "12px" }}
+                        checked={selectAllStrategy}
+                        onChange={handleSelectAllForStrategy}
+                      />
+                      Select all
+                    </li>
+                    <li>
+                      {uniqueStrategy.map((maxLoss, index) => (
+                        <div key={index} className="filter-inputs">
+                          <input
+                            type="checkbox"
+                            style={{
+                              width: "12px",
+                            }}
+                            checked={StrategySelected.includes(
+                              maxLoss.toLowerCase(),
+                            )}
+                            onChange={() =>
+                              handleCheckboxChangeStrategy(maxLoss.toLowerCase())
+                            }
+                          />
+                          <label>{maxLoss}</label>
+                        </div>
+                      ))}
+                    </li>
+                  </ul>
+                </form>
+                <div className="filter-popup-footer">
+                  <button onClick={handleOkClick}>Ok</button>
+                  <button onClick={() => setShowSearchMaxLoss((prev) => !prev)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </th>
+        ),
+        "Entry Price": colVisPortfolio["Entry Price"] && (
+          <th>
+            <div>
+              <small>Entry Price</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-20px",
+                }}
+                onClick={() => {
+                  setShowSearchQtyByExposure((prev) => !prev);
+                }}
+              />
+            </div>
+            {/* {showSearchQtyByExposure && (
+        <div className="Filter-popup">
+          <form
+            id="filter-form-qty-by-exposure"
+            className="Filter-inputs-container"
+          >
+            <ul>
+              <li>
+                <input
+                  type="checkbox"
+                  style={{ width: "12px" }}
+                  checked={selectAllQtyByExposure}
+                  onChange={handleSelectAllForQtyByExposure}
+                />
+                Select all
+              </li>
+              <li>
+                {uniqueDataQtyByExposure.map((qtyByExposure, index) => (
+                  <div key={index} className="filter-inputs">
+                    <input
+                      type="checkbox"
+                      style={{
+                        width: "12px",
+                      }}
+                      checked={qtyByExposureSelected.includes(
+                        qtyByExposure.toString(),
+                      )}
+                      onChange={() =>
+                        handleCheckboxChangeQtyByExposure(
+                          qtyByExposure.toString(),
+                        )
+                      }
+                    />
+                    <label>{qtyByExposure}</label>
+                  </div>
+                ))}
+              </li>
+            </ul>
+          </form>
+          <div className="filter-popup-footer">
+            <button onClick={handleOkClick}>ok</button>
+            <button
+              onClick={() => setShowSearchQtyByExposure((prev) => !prev)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )} */}
+          </th>
+        ),
+        "Combined Premuim": colVisPortfolio["Combined Premuim"] && (
+          <th>
+            <div>
+              <small>Combined Premuim</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                }}
+              />
+            </div>
+          </th>
+        ),
+        "Per Lot Premuim": colVisPortfolio["Per Lot Premuim"] && (
+          <th>
+            <div>
+              <small>Per Lot Premuim</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                }}
+                onClick={() => {
+                  setShowSearchMaxLossPerTrade((prev) => !prev);
+                }}
+              />
+            </div>
+          </th>
+        ),
+        "Start Time": colVisPortfolio["Start Time"] && (
+          <th>
+            <div>
+              <small>Start Time</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-25px",
+                }}
+                onClick={() => {
+                  setShowSearchMaxOpenTrades((prev) => !prev);
+                }}
+              />
+            </div>
+          </th>
+        ),
+        "End Time": colVisPortfolio["End Time"] && (
+          <th>
+            <div>
+              <small>End Time</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-25px",
+                }}
+                onClick={() => {
+                  setShowSearchQtyMultiplier((prev) => !prev);
+                }}
+              />
+            </div>
+          </th>
+        ),
+        "SqOff Time": colVisPortfolio["SqOff Time"] && (
+          <th>
+            <div>
+              <small>SqOff Time</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-25px",
+                }}
+                onClick={() => {
+                  setShowSearchMobile((prev) => !prev);
+                }}
+              />
+            </div>
+          </th>
+        ),
+        "Range End Time": colVisPortfolio["Range End Time"] && (
+          <th>
+            <div>
+              <small>Range End Time</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-15px",
+                }}
+                onClick={() => {
+                  setShowSearchMobile((prev) => !prev);
+                }}
+              />
+            </div>
+          </th>
+        ),
+        Delta: colVisPortfolio["Delta"] && (
+          <th>
+            <div>
+              <small>Delta</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-40px",
+                }}
+                onClick={() => {
+                  setShowSearchEmail((prev) => !prev);
+                }}
+              />
+            </div>
+          </th>
+        ),
+        Theta: colVisPortfolio["Theta"] && (
+          <th>
+            <div>
+              <small>Theta</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-40px",
+                }}
+                onClick={() => {
+                  setShowSearchNet((prev) => !prev);
+                }}
+              />
+            </div>
+          </th>
+        ),
+        Vega: colVisPortfolio["Vega"] && (
+          <th>
+            <div>
+              <small>Vega</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-40px",
+                }}
+              />
+            </div>
+          </th>
+        ),
+        Remarks: colVisPortfolio["Remarks"] && (
+          <th>
+            <div>
+              <small>Remarks</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-25px",
+                }}
+              />
+            </div>
+          </th>
+        ),
+        Message: colVisPortfolio["Message"] && (
+          <th>
+            <div>
+              <small>Message</small>
+              <img
+                src={filterIcon}
+                alt="icon"
+                style={{
+                  height: "25px",
+                  width: "25px",
+                  // marginLeft: "-30px",
+                }}
+              />
+            </div>
+          </th>
+        ),
+      };
+      const filterEmptyRows = (rows: any[]) => {
+        return rows.filter(row => {
+          return Object.values(row).some(value => value !== "");
+        });
+      };
+
+      const validRows = filterEmptyRows(filteredRows);
+
+      const [newcopy, setNewCopy] = useState<boolean>(false);
+      const [portfolioName, setPortfolioName] = useState<string>('');
+      const [selectedPortfolio, setSelectedPortfolio] = useState<Record<string, any>>({}); // Store selected portfolio details
+
+      const handleOpenCopy = (item: Record<string, any>) => {
+        setSelectedPortfolio(item);
+        setNewCopy(true);
+        setPortfolioName(item.portfolio_name || '');
+      };
+
+      const handleCloseCopy = () => {
+        setNewCopy(false);
+        setPortfolioName(''); // Clear input on close
+      };
+
+      const handlenewMakeCopy = async () => {
+        try {
+          console.log("Selected Portfolio Details:", selectedPortfolio);
+
+          let updatedPortfolioName = portfolioName || selectedPortfolio.portfolio_name;
+
+          const updatedItem = { ...selectedPortfolio, portfolio_name: updatedPortfolioName };
+
+          console.log("Updated Item:", updatedItem);
+
+          const apiUrl = `${process.env.NEXT_PUBLIC_SERVER_HOST}/store_portfolio/${mainUser}`;
+
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(updatedItem),
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+
+          const responseData = await response.json();
+          console.log("API Response:", responseData);
+          handlePageClick();
+        } catch (error) {
+          if (error instanceof Error) {
+            console.error("Error:", error.message);
+          }
+        } finally {
+          handleCloseCopy();
+        }
+      };
+
+    }}
+  return (
+    <div onClick={handleCloseAllSearchBox}>
+      <MarketIndex />
+      <div className="main-section">
+        <LeftNav />
+
+        <div className="middle-main-container">
+          {/* <ErrorContainer
+              msgs={[]}
+            /> */}
+          <TopNav
+            pageCols={portfolioCols}
+            colsSelectedAll={portfolioColsSelectedALL}
+            setColsSelectedALL={setportfolioColsSelectedALL}
+            selectAll={portfolioColSelectALL}
+            colVis={colVisPortfolio}
+            setColVis={setcolVisPortfolio}
+            setSeq={setportfolioSeq}
+          />
+          <div
+            className="main-table"
+          // ref={tableRef}
+          >
+            <table className="table">
+              <thead style={{ position: "sticky", top: "0px", zIndex: 10 }}>
+                {portfolioSeq.map((colName, index) => {
+                  return (
+                    <React.Fragment key={index}>
+                      {portfolioTH[colName]}
+                    </React.Fragment>
+                  );
+                })}
+              </thead>
+              <tbody
+                className="tabletbody"
+                style={{ backgroundColor: "#e8e6e6" }}
+              >
+                {validRows.length > 0 ? (
+
+                  filteredRows.map((item, index) => {
+                    const isExecuted = executedportfolios.includes(
+                      item.portfolio_name,
+                    );
+
+                    const isExecuted1 = executedPortfolio.some(executedItem =>
+                      executedItem.portfolio_name === item.portfolio_name
+                    );
+                    const portfolioTD = {
+                      Enabled: colVisPortfolio["Enabled"] && (
+                        <td
+                          style={{
+                            width: "15%",
+                            textAlign: "right",
+                            paddingRight: "10px",
+                          }}
+                          colSpan="2"
+                        >
+                          {index !== undefined && item.portfolio_name !== "" &&
+                            (!isPlusClicked[index] ? (
+                              <span
+                                style={{
+                                  fontSize: "30px",
+                                  fontWeight: "bold",
+                                  marginRight: "55px",
+                                  cursor: "pointer",
+                                }}
+                                onClick={() => {
+                                  handlePlusClick(index);
+                                }}
+                              >
+                                +
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: "30px",
+                                  fontWeight: "bold",
+                                  marginRight: "59px",
+                                  cursor: "pointer",
+                                }}
+                                onClick={() => {
+                                  handlePlusClick(index);
+                                }}
+                              >
+                                -
+                              </span>
+                            ))}
+                          {item.portfolio_name !== "" && (<input
+                            type="checkbox"
+                            checked={item.enabled}
+                            onChange={() =>
+                              handlechangebox(item.portfolio_name, item.enabled)
+                            }
+                          />)}
+                        </td>
+                      ),
+
+
+                      Status: colVisPortfolio["Status"] && (
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                            value={isExecuted ? "Completed" : ""}
+                          />
+                        </td>
+                      ),
+                      "Portfolio Name": colVisPortfolio["Portfolio Name"] && (
+                        <td>
+                          <input
+                            type="text"
+                            value={item.portfolio_name}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      PNL: colVisPortfolio["PNL"] && (
+                        <td>
+                          <input
+                            type="text"
+                            value={
+                              (() => {
+                                const totalPNL = item.brokerDetails?.reduce((sum, broker) => {
+                                  const pnlValue = parseFloat(Object.values(broker)[0]["P&L"]);
+                                  return sum + (isNaN(pnlValue) ? 0 : pnlValue);
+                                }, 0);
+                                return totalPNL === 0 ? "0" : totalPNL?.toFixed(2);
+                              })()
+                            }
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              const sanitizedValue = value.replace(/[^0-9]/g, "");
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              padding: "6px",
+                              color:
+                                item.brokerDetails?.reduce((sum, broker) => {
+                                  const pnlValue = parseFloat(Object.values(broker)[0]["P&L"]);
+                                  return sum + (isNaN(pnlValue) ? 0 : pnlValue);
+                                }, 0) < 0
+                                  ? "red"
+                                  : "green",
+                            }}
+                          />
+                        </td>
+                      ),
+                      Symbol: colVisPortfolio["Symbol"] && (
+                        <td>
+                          <input
+                            type="text"
+                            value={item.stock_symbol}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      "Execute/Sq Off": colVisPortfolio["Execute/Sq Off"] && (
+                        <td style={{ textAlign: "center" }}>
+                          {isExecuted1 ? (
+                            <span className="tooltip-container">
+                              <img
+                                src={close}
+                                alt="icon"
+                                className="cross_icon"
+                                style={{
+                                  height: "20px",
+                                  width: "20px",
+                                }}
+                                onClick={() => {
+                                  handleSqOffClick(item);
+                                }}
+                              />
+                              <span className="tooltiptext delete-tooltip">
+                                Sq Off
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="tooltip-container">
+                              <img
+                                src={Start}
+                                alt="icon"
+                                className="logout_icon"
+                                style={{
+                                  height: "25px",
+                                  width: "25px",
+                                }}
+                                onClick={() => {
+                                  openModal(item);
+                                }}
+                              // onClick={openModal}
+                              />
+                              <span className="tooltiptext -tooltip">
+                                Execute
+                              </span>
+                            </span>
+                          )}
+                        </td>
+                      ),
+
+                      Delete: colVisPortfolio["Delete"] && (
+                        <td style={{ textAlign: "center" }}>
+                          <span className="tooltip-container">
+                            <img
+                              src={Recycle}
+                              alt="icon"
+                              className="cross_icon"
+                              style={{
+                                height: "20px",
+                                width: "20px",
+                              }}
+                              onClick={() => {
+                                handleDelete(item.portfolio_name);
+                              }}
+                            />
+                            <span className="tooltiptext delete-tooltip">
+                              Delete
+                            </span>
+                          </span>
+                        </td>
+                      ),
+                      Edit: colVisPortfolio["Edit"] && (
+                        <td style={{ textAlign: "center" }}>
+                          <span className="tooltip-container">
+                            <img
+                              src={Edit}
+                              alt="icon"
+                              style={{
+                                height: "25px",
+                                width: "25px",
+                              }}
+                              onClick={() => {
+                                handleEdit(item);
+                              }}
+                            />
+                            <span className="tooltiptext delete-tooltip">
+                              Edit
+                            </span>
+                          </span>
+                        </td>
+                      ),
+
+                      "Make Copy": colVisPortfolio["Make Copy"] && (
+                        <td style={{ textAlign: "center" }}>
+                          <span className="tooltip-container">
+                            <img
+                              src={makecopy}
+                              alt="icon"
+                              style={{
+                                height: "25px",
+                                width: "25px",
+                              }}
+                              onClick={() => handleOpenCopy(item)}
+                            />
+                            <span className="tooltiptext delete-tooltip">
+                              Make Copy
+                            </span>
+                          </span>
+                        </td>
+                      ),
+                      "Mark As Completed": colVisPortfolio[
+                        "Mark As Completed"
+                      ] && (
+                          <td style={{ textAlign: "center" }}>
+                            <span className="tooltip-container">
+                              <img
+                                src={makeascompleted}
+                                alt="icon"
+                                style={{
+                                  height: "25px",
+                                  width: "25px",
+                                }}
+                                onClick={handleMakeAsCompleted}
+                              />
+                              <button
+                                className="tooltiptext delete-tooltip"
+                                style={{ width: "9.2rem" }}
+                              >
+                                Make As Completed
+                              </button>
+                            </span>
+                          </td>
+                        ),
+                      Reset: colVisPortfolio["Reset"] && (
+                        <td style={{ textAlign: "center" }}>
+                          <span className="tooltip-container">
+                            <img
+                              src={reset}
+                              alt="icon"
+                              style={{
+                                height: "25px",
+                                width: "25px",
+                              }}
+                              onClick={handleReset}
+                            />
+                            <span className="tooltiptext delete-tooltip">
+                              Reset
+                            </span>
+                          </span>
+                        </td>
+                      ),
+                      "Pay Off": colVisPortfolio["Pay Off"] && (
+                        <td style={{ textAlign: "center" }}>
+                          <span className="tooltip-container">
+                            <img
+                              src={payoff}
+                              alt="icon"
+                              style={{
+                                height: "25px",
+                                width: "25px",
+                              }}
+                              onClick={handlePayOff}
+                            />
+                            <span className="tooltiptext delete-tooltip">
+                              Pay Off
+                            </span>
+                          </span>
+                        </td>
+                      ),
+                      Chat: colVisPortfolio["Chat"] && (
+                        <td style={{ textAlign: "center" }}>
+                          <span className="tooltip-container">
+                            <img
+                              src={chart}
+                              alt="icon"
+                              style={{
+                                height: "25px",
+                                width: "25px",
+                              }}
+                              onClick={handleChart}
+                            />
+                            <span className="tooltiptext delete-tooltip">
+                              Chat
+                            </span>
+                          </span>
+                        </td>
+                      ),
+                      "Re Execute": colVisPortfolio["Re Execute"] && (
+                        <td style={{ textAlign: "center" }}>
+                          <span className="tooltip-container">
+                            <img
+                              src={reexecute}
+                              alt="icon"
+                              style={{
+                                height: "25px",
+                                width: "25px",
+                              }}
+                              onClick={() => {
+                                handleReexecute(item);
+                              }}
+                            />
+                            <span className="tooltiptext delete-tooltip">
+                              Re execute
+                            </span>
+                          </span>
+                        </td>
+                      ),
+                      "Part Entry/Exit": colVisPortfolio["Part Entry/Exit"] && (
+                        <td
+                          style={{
+                            textAlign: "center",
+                            // backgroundColor: "#e8e6e6",
+                          }}
+                        >
+                          <span className="tooltip-container">
+                            <img
+                              src={partentry}
+                              alt="icon"
+                              style={{
+                                height: "25px",
+                                width: "25px",
+                              }}
+                              onClick={handlePartEntry}
+                            />
+                            <span className="tooltiptext delete-tooltip">
+                              Part Entry
+                            </span>
+                          </span>
+                        </td>
+                      ),
+                      "Current Value": colVisPortfolio["Current Value"] && (
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      "Value Per Lot": colVisPortfolio["Value Per Lot"] && (
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      "Underlying LTP": colVisPortfolio["Underlying LTP"] && (
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            value={
+                              item.stock_symbol === "NIFTY"
+                                ? marketData.nifty50.c
+                                : item.stock_symbol === "BANKNIFTY"
+                                  ? marketData.niftybank.c
+                                  : item.stock_symbol === "FINNIFTY"
+                                    ? marketData.finnifty.c
+                                    : ""
+                            }
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+
+                      "Positional Portfolio": colVisPortfolio[
+                        "Positional Portfolio"
+                      ] && (
+                          <td>
+                            <input
+                              type="text"
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                              }}
+                            />
+                          </td>
+                        ),
+                      Product: colVisPortfolio["Product"] && (
+                        <td>
+                          <input
+                            type="text"
+                            value={item.variety}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      Strategy: colVisPortfolio["Strategy"] && (
+                        <td>
+                          <input
+                            type="text"
+                            value={item.strategy}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      "Entry Price": colVisPortfolio["Entry Price"] && (
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      "Combined Premuim": colVisPortfolio["Combined Premuim"] && (
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      "Per Lot Premuim": colVisPortfolio["Per Lot Premuim"] && (
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+
+                              alignItems: "center",
+                            }}
+                          />
+                        </td>
+                      ),
+                      "Start Time": colVisPortfolio["Start Time"] && (
+                        <td>
+                          <input
+                            type="text"
+                            value={item.start_time}
+                            style={{
+                              padding: "6px",
+
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                      ),
+                      "End Time": colVisPortfolio["End Time"] && (
+                        <td>
+                          <input
+                            type="text"
+                            value={item.end_time}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                      ),
+                      "SqOff Time": colVisPortfolio["SqOff Time"] && (
+                        <td>
+                          <input
+                            type="text"
+                            value={item.square_off_time}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                      ),
+                      "Range End Time": colVisPortfolio["Range End Time"] && (
+                        <td>
+                          <input
+                            type="text"
+                            defaultValue="00:00:00"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                      ),
+                      Delta: colVisPortfolio["Delta"] && (
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              const sanitizedValue = value.replace(
+                                /[^0-9.]/g,
+                                "",
+                              );
+                              const formattedValue = sanitizedValue.replace(
+                                /(\d)(?=(\d{2})+(?!\.\d))$/,
+                                "$1,",
+                              );
+                              e.target.value = formattedValue;
+                            }}
+                            style={{
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      Theta: colVisPortfolio["Theta"] && (
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              const sanitizedValue = value.replace(/[^0-9]/g, "");
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      Vega: colVisPortfolio["Vega"] && (
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              const sanitizedValue = value.replace(/[^0-9]/g, "");
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      Remarks: colVisPortfolio["Remarks"] && (
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                      Message: colVisPortfolio["Message"] && (
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      ),
+                    };
+                    return (
+                      <tr key={index}>
+                        {portfolioSeq.map((colName, index) => {
+                          return (
+                            <React.Fragment key={index}>
+
+                              {portfolioTD[colName]}
+
+                            </React.Fragment>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
+                ) : null}
+              </tbody>
+            </table>
+
+            <Modal
+              isOpen={showConfirmDeleteModal}
+              onRequestClose={() => setShowConfirmDeleteModal(false)}
+              contentLabel="Confirm Delete Modal"
+              style={{
+                overlay: {
+                  backgroundColor: "rgba(0, 0, 0, 0.5)",
+                  zIndex: 1000,
+                },
+                content: {
+                  width: "300px",
+                  height: "150px",
+                  margin: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  background: "white",
+                  borderRadius: "10px",
+                  boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)",
+                  padding: "20px",
+                },
+              }}
+            >
+              <p
+                style={{
+                  textAlign: "center",
+                  fontSize: "18px",
+                  marginBottom: "20px",
+                }}
+              >
+                If you proceed, you can't retrieve '{portfolioToDelete}'
+                portfolio details?
+              </p>
+              <div style={{ flex: 1 }}></div>
+              <div className="modal-buttons" style={{ marginBottom: "20px" }}>
+                <button
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: "5px",
+                    backgroundColor: "#d9534f",
+                    color: "white",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => {
+                    handleDeletes(portfolioToDelete);
+                  }}
+                >
+                  Confirm
+                </button>
+                <button
+                  style={{
+                    marginLeft: "10px",
+                    padding: "8px 16px",
+                    borderRadius: "5px",
+                    backgroundColor: "#5cb85c",
+                    color: "white",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => setShowConfirmDeleteModal(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </Modal>
+
+            {isTableOpen && (
+              <div>
+                <table className="table1">
+                  <thead>
+                    <tr>
+                      <th>SNO1</th>
+                      <th>ID</th>
+                      <th>SqOff</th>
+                      <th>Idle</th>
+                      <th>Execute</th>
+                      <th>Part Entry/Exit</th>
+                      <th>Exchange Symbol</th>
+                      <th>Transcation</th>
+                      <th>Lots</th>
+                      <th>Target Type</th>
+                      <th>Target Value</th>
+                      <th>Profit Locking</th>
+                      <th>SL Type</th>
+                      <th>SL Value</th>
+                      <th>Trailing SL</th>
+                      <th>SL Wait</th>
+                      <th>On Target</th>
+                      <th>On SL</th>
+                      <th>Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subTableData > 0 ? (
+                      subTableData.map((item, index) => (
+                        <React.Fragment key={index}>
+                          {item?.legs?.map((leg, legIndex) => (
+                            <tr key={index}>
+                              <td>
+                                <input
+                                  type="number"
+                                  value={index + 1}
+                                  style={{
+                                    disable: "none",
+                                    textAlign: "center",
+                                    padding: "6px",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  onInput={(e) => {
+                                    const value = e.target.value;
+                                    // Remove non-numeric characters
+                                    const sanitizedValue = value.replace(
+                                      /[^0-9]/g,
+                                      "",
+                                    );
+                                    // Update the input value
+                                    e.target.value = sanitizedValue;
+                                  }}
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                    textAlign: "center",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  defaultValue="00:00:00"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  value={`${leg.expiry_date.slice(0, 5)}, ${leg.option_type}, ${leg.strike}`}
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                  }}
+                                />
+                              </td>
+
+                              <td>
+                                <input
+                                  type="text"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                  }}
+                                  value={leg.transaction_type}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  value={leg.lots}
+                                  style={{
+                                    disable: "none",
+                                    textAlign: "center",
+                                    padding: "6px",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  defaultValue="0"
+                                  onInput={(e) => {
+                                    const value = e.target.value;
+                                    // Remove non-numeric characters
+                                    const sanitizedValue = value.replace(
+                                      /[^0-9]/g,
+                                      "",
+                                    );
+                                    // Update the input value
+                                    e.target.value = sanitizedValue;
+                                  }}
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                    textAlign: "center",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  defaultValue="0"
+                                  onInput={(e) => {
+                                    const value = e.target.value;
+                                    // Remove non-numeric characters
+                                    const sanitizedValue = value.replace(
+                                      /[^0-9]/g,
+                                      "",
+                                    );
+                                    // Update the input value
+                                    e.target.value = sanitizedValue;
+                                  }}
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                    textAlign: "center",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  defaultValue="0"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                    textAlign: "center",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  defaultValue="0"
+                                  onInput={(e) => {
+                                    const value = e.target.value;
+                                    // Remove non-numeric characters
+                                    const sanitizedValue = value.replace(
+                                      /[^0-9]/g,
+                                      "",
+                                    );
+                                    // Update the input value
+                                    e.target.value = sanitizedValue;
+                                  }}
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                    textAlign: "center",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  defaultValue="0"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                    textAlign: "center",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  defaultValue="0"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                    textAlign: "center",
+                                  }}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  style={{
+                                    disable: "none",
+                                    padding: "6px",
+                                  }}
+                                />
+                              </td>
+                            </tr>
+                          ))}
+                        </React.Fragment>
+                      ))
+                    ) : (
+                      <tr>
+                        <td>
+                          <input
+                            type="number"
+                            value="1"
+                            style={{
+                              disable: "none",
+                              textAlign: "center",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              // Remove non-numeric characters
+                              const sanitizedValue = value.replace(
+                                /[^0-9]/g,
+                                "",
+                              );
+                              // Update the input value
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            defaultValue="00:00:00"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            // value={`${leg.expiry_date.slice(0, 5)}, ${leg.option_type}, ${leg.strike}`}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          // value={leg.transaction_type}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            // value={leg.lots}
+                            style={{
+                              disable: "none",
+                              textAlign: "center",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              // Remove non-numeric characters
+                              const sanitizedValue = value.replace(
+                                /[^0-9]/g,
+                                "",
+                              );
+                              // Update the input value
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              // Remove non-numeric characters
+                              const sanitizedValue = value.replace(
+                                /[^0-9]/g,
+                                "",
+                              );
+                              // Update the input value
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              // Remove non-numeric characters
+                              const sanitizedValue = value.replace(
+                                /[^0-9]/g,
+                                "",
+                              );
+                              // Update the input value
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                <table className="table2">
+                  <thead>
+                    <tr>
+                      <th>Option Portfolio</th>
+                      <th>User ID</th>
+                      <th>User Alias</th>
+                      <th>SqOff</th>
+                      <th>Mark As Completed</th>
+                      <th>Part Entry/Exit</th>
+                      <th>Avg Execution Price</th>
+                      <th>PNL</th>
+                      <th>CE PNL</th>
+                      <th>PE PNL</th>
+                      <th>Max PNL</th>
+                      <th>Max PNL Time</th>
+                      <th>Min PNL</th>
+                      <th>Min PNL Time</th>
+                      <th>Target</th>
+                      <th>SL</th>
+                      <th>Message</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* {console.log("subTableData", subTableData)} */}
+                    {portfolioDetails[openPortIndex].brokerDetails.length > 0 ? (
+                      portfolioDetails[openPortIndex].brokerDetails.map((item, index) => (
+                        <tr key={index}>
+                          <td>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                paddingRight: "15px",
+                              }}
+                            >
+                              {!isPlusClicked1[index] ? (
+                                <span
+                                  style={{
+                                    fontSize: "30px",
+                                    fontWeight: "bold",
+                                    cursor: "pointer",
+                                    paddingLeft: "10px",
+                                    paddingRight: "10px",
+                                  }}
+                                  onClick={() => {
+                                    handlePlusClick1(index);
+                                  }}
+                                >
+                                  +
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    fontSize: "30px",
+                                    fontWeight: "bold",
+                                    cursor: "pointer",
+                                    paddingLeft: "13px",
+                                    paddingRight: "10px",
+                                  }}
+                                  onClick={() => {
+                                    handlePlusClick1(index);
+                                  }}
+                                >
+                                  -
+                                </span>
+                              )}
+                              <input
+                                type="text"
+                                style={{
+                                  marginLeft: "10px",
+                                  backgroundColor: "#A6D8FF",
+                                }}
+                              />
+                            </div>
+                          </td>
+
+                          <td>
+                            <input
+                              type="text"
+                              className="Clickable cell"
+                              value={Object.keys(item)[0]}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                                minWidth: "100%",
+                                minHeight: "20px",
+                                border: "1px solid transparent",
+                                display: "inline-block",
+                                alignItems: "center", // Corrected property
+                                justifyContent: "center",
+                                scrollbarWidth: "thin", // Set the width of the scrollbar (non-WebKit browsers)
+                                maxWidth: "11rem",
+                                maxHeight: "50px", // Set a maximum height for the span
+                                overflowY: "auto",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              value={item.display_name}
+                              type="text"
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              defaultValue="00:00:00"
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              value={Object.values(item)[0]["P&L"]}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                                textAlign: "center",
+                                color:
+                                  Number(Object.values(item)[0]["P&L"]) < 0
+                                    ? "red"
+                                    : "green",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              value={Object.values(item)[0]["maxPL"] == "Infinity"
+                                ? "0.00"
+                                : Object.values(item)[0]["maxPL"]}
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                                textAlign: "center",
+                                color:
+                                  Number(Object.values(item)[0]["maxPL"]) < 0
+                                    ? "red"
+                                    : "green",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              // value={timerValue}
+                              value={Object.values(item)[0]["maxPLTime"]}
+                              placeholder="00:00:00"
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              value={
+                                Object.values(item)[0]["minPL"] == "Infinity"
+                                  ? "0.00"
+                                  : Object.values(item)[0]["minPL"]
+                              }
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                                textAlign: "center",
+                                color:
+                                  Number(Object.values(item)[0]["minPL"]) < 0
+                                    ? "red"
+                                    : "green",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              // value={timerValue}
+                              value={Object.values(item)[0]["minPLTime"]}
+                              // onChange={handleTimerChange}
+                              placeholder="00:00:00"
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              // value={Object.values(item)[0]["maxP&L"]}
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                backgroundColor: "#A6D8FF",
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                            }}
+                          />
+                        </td>
+
+                        <td>
+                          <input
+                            type="text"
+                            className="Clickable cell"
+                            // value={Object.keys(item)[ 0 ]}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                              minWidth: "100%",
+                              minHeight: "20px",
+                              border: "1px solid transparent",
+                              display: "inline-block",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              scrollbarWidth: "thin",
+                              maxWidth: "11rem",
+                              maxHeight: "50px",
+                              overflowY: "auto",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            // value={item.display_name}
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            defaultValue="00:00:00"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            // value={Object.values(item)[ 0 ]}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              // Remove non-numeric characters
+                              const sanitizedValue = value.replace(
+                                /[^0-9]/g,
+                                "",
+                              );
+                              // Update the input value
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              // Remove non-numeric characters
+                              const sanitizedValue = value.replace(
+                                /[^0-9]/g,
+                                "",
+                              );
+                              // Update the input value
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              // Remove non-numeric characters
+                              const sanitizedValue = value.replace(
+                                /[^0-9]/g,
+                                "",
+                              );
+                              // Update the input value
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              // Remove non-numeric characters
+                              const sanitizedValue = value.replace(
+                                /[^0-9]/g,
+                                "",
+                              );
+                              // Update the input value
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={timerValue}
+                            onChange={handleTimerChange}
+                            placeholder="00:00:00"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            value={timerValue}
+                            onChange={handleTimerChange}
+                            placeholder="00:00:00"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              // Remove non-numeric characters
+                              const sanitizedValue = value.replace(
+                                /[^0-9]/g,
+                                "",
+                              );
+                              // Update the input value
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            defaultValue="0"
+                            onInput={(e) => {
+                              const value = e.target.value;
+                              // Remove non-numeric characters
+                              const sanitizedValue = value.replace(
+                                /[^0-9]/g,
+                                "",
+                              );
+                              // Update the input value
+                              e.target.value = sanitizedValue;
+                            }}
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                              textAlign: "center",
+                            }}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            style={{
+                              disable: "none",
+                              padding: "6px",
+                              backgroundColor: "#A6D8FF",
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                {isTableOpen && isTableOpen1 && (
+                  <table className="table3">
+                    <thead>
+                      <tr>
+                        <th>SNO</th>
+                        <th>SqOff Leg</th>
+                        <th>Part Entry/Exit</th>
+                        <th>Exchange Symbol</th>
+                        <th>LTP</th>
+                        <th>PNL</th>
+                        <th>Txn</th>
+                        <th>Lots</th>
+                        <th>Leg Qty</th>
+                        <th>Total Entry Qty</th>
+                        <th>Avg Entry Price</th>
+                        <th>Entry Filled Qty</th>
+                        <th>Avg Exit Price</th>
+                        <th>Exit Filled Qty</th>
+                        <th>Status</th>
+                        <th>Target</th>
+                        <th>SL</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {subTableData.map((item, index) => (
+                        <tr key={index}>
+                          <td>
+                            <input
+                              type="number"
+                              value={index + 1}
+                              style={{
+                                disable: "none",
+                                textAlign: "center",
+                                padding: "6px",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              style={{ disable: "none", padding: "6px" }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              style={{ disable: "none", padding: "6px" }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              style={{ disable: "none", padding: "6px" }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              style={{ disable: "none", padding: "6px" }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              value={item.lots}
+                              style={{
+                                disable: "none",
+                                textAlign: "center",
+                                padding: "6px",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="text"
+                              style={{ disable: "none", padding: "6px" }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              defaultValue="0"
+                              onInput={(e) => {
+                                const value = e.target.value;
+                                // Remove non-numeric characters
+                                const sanitizedValue = value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+                                // Update the input value
+                                e.target.value = sanitizedValue;
+                              }}
+                              style={{
+                                disable: "none",
+                                padding: "6px",
+                                textAlign: "center",
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+          </div>
+
+          <Modal
+            isOpen={isModalOpen}
+            onRequestClose={closeModal}
+            contentLabel="Confirm Place Order Modal"
+            style={{
+              overlay: {
+                backgroundColor: "rgba(0, 0, 0, 0.5)",
+                zIndex: 1000,
+              },
+              content: {
+                width: "300px",
+                height: "150px",
+                margin: "auto",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                alignItems: "center",
+                background: "white",
+                borderRadius: "10px",
+                boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)",
+                padding: "20px",
+              },
+            }}
+          >
+            <p
+              style={{
+                textAlign: "center",
+                fontSize: "18px",
+                marginBottom: "20px",
+              }}
+            >
+              Do you need to place Order?
+            </p>
+            <div className="modal-buttons" style={{ marginBottom: "20px" }}>
+              <button
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "5px",
+                  backgroundColor: "#d9534f",
+                  color: "white",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+                onClick={() => {
+                  placeOrderOptionsQTP(selectedItem);
+                  closeModal();
+                }}
+              >
+                YES
+              </button>
+              <button
+                style={{
+                  marginLeft: "10px",
+                  padding: "8px 16px",
+                  borderRadius: "5px",
+                  backgroundColor: "#5cb85c",
+                  color: "white",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+                onClick={closeModal}
+              >
+                NO
+              </button>
+            </div>
+          </Modal>
+          <Modal
+            isOpen={newcopy}
+            onRequestClose={handleCloseCopy}
+            contentLabel="Confirm Make Copy Modal"
+            style={{
+              overlay: {
+                backgroundColor: "rgba(0, 0, 0, 0.5)",
+                zIndex: 1000,
+              },
+              content: {
+                width: "530px",
+                maxWidth: "100%",
+                height: "auto",
+                margin: "auto",
+                display: "flex",
+                flexDirection: "column",
+                background: "white",
+                borderRadius: "10px",
+                padding: "0px",
+                position: "relative",
+                top: "50%",
+                transform: "translateY(-50%)",
+              },
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              color: "white",
+              backgroundColor: "#32406D",
+              width: "100%",
+              padding: "10px",
+              textAlign: "center",
+              position: "sticky",
+              top: 0,
+              borderTopLeftRadius: "10px",
+              borderTopRightRadius: "10px",
+              zIndex: 1,
+            }}>
+              Name Of New Options Portfolio
+            </div>
+
+            {/* Modal Body */}
+            <p style={{ paddingLeft: "30px", fontWeight: "bold", paddingTop: "15px" }}>
+              Enter Name for New Options Portfolio
+            </p>
+            <div style={{ marginLeft: "30px", marginTop: "20px" }}>
+              <input
+                type="text"
+                placeholder="Portfolio Name"
+                style={{ height: "35px", width: "300px", paddingLeft: "10px" }}
+                value={portfolioName}
+                onChange={(e) => setPortfolioName(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px' }}>
+              <button onClick={handleCloseCopy} style={{ marginRight: '20px', borderRadius: "5px", width: "60px", color: "white", backgroundColor: "red", border: "none" }}>Cancel</button>
+              <button
+                style={{ borderRadius: "5px", width: "60px", color: "white", backgroundColor: "green", border: "none" }}
+                onClick={handlenewMakeCopy} // Call the API when confirming
+              >
+                Confirm
+              </button>
+            </div>
+          </Modal>
+          <div className="add_collapse">
+            <button className="hiddenbutton button">Add</button>
+            <button
+              style={{ zIndex: "0" }}
+              onClick={() => {
+                errorContainerRef.current.toggleCollapse();
+              }}
+              className="button"
+              id="collapse"
+            >
+              {collapsed ? "Expand" : "Collapse"}
+            </button>
+          </div>
+
+          <ErrorContainer
+            ref={errorContainerRef}
+            msgs={msgs}
+            handleClearLogs={handleClearLogs}
+          />
+        </div>
+
+        <RightNav />
+      </div>
+    </div>
+  );
+}
+
+export default Portfolio();

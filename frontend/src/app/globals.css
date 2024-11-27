@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+.container {
+  display: flex;
+  justify-content: space-between; /* Distributes sections with space between */
+  align-items: flex-start; /* Aligns rows at the top */
+  gap: 20px; /* Adds space between the rows */
+}
+
+.section {
+  flex: 1; /* Allows each section to take up equal space */
+  min-width: 200px; /* Ensures sections don't get too narrow */
+}
+
+.rotate-90 {
+  transform: rotate(90deg);
+}
+
